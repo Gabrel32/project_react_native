@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   chapterItem: {
-    padding: 16,
+    padding: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   languageText: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#666',
     marginTop: 4,
   },

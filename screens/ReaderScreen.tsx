@@ -16,6 +16,7 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
+  const { width, height } = Dimensions.get('window');
 
   useEffect(() => {
     const fetchChapterPages = async () => {
@@ -23,7 +24,6 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
         setLoading(true);
         setError(null);
         
-        // 1. Obtener el servidor y datos del capítulo
         const serverResponse = await fetch(`${config.BASE_URL}/at-home/server/${chapterId}`);
         
         if (!serverResponse.ok) {
@@ -32,14 +32,11 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
         
         const serverData = await serverResponse.json();
         
-        // Verificar si tenemos los datos necesarios
         if (!serverData.baseUrl || !serverData.chapter?.hash || !serverData.chapter?.data) {
           throw new Error('Datos del servidor incompletos');
         }
         
         const { baseUrl, chapter } = serverData;
-        
-        // Construir URLs de las imágenes
         const pageUrls = chapter.data.map((fileName: string) => 
           `${baseUrl}/data/${chapter.hash}/${fileName}`
         );
@@ -58,7 +55,6 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
 
     fetchChapterPages();
   }, [chapterId]);
-
 
   if (loading) {
     return (
@@ -91,22 +87,38 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
   return (
     <View style={styles.container}>
       <ScrollView
+        // ref={scrollViewRef}
         contentContainerStyle={styles.scrollContainer}
         pagingEnabled
         horizontal={false}
+        showsVerticalScrollIndicator={false}
         onScroll={(event) => {
           const offsetY = event.nativeEvent.contentOffset.y;
-          const pageHeight = Dimensions.get('window').height;
-          const newPage = Math.floor(offsetY / pageHeight);
-          setCurrentPage(newPage);
+          const pageHeight = height;
+          const newPage = Math.round(offsetY / pageHeight);
+          
+          // Solo actualizar si hay un cambio real de página
+          if (currentPage !== newPage && newPage >= 0 && newPage < pages.length) {
+            setCurrentPage(newPage);
+          }
         }}
-        scrollEventThrottle={16}
+        scrollEventThrottle={0}
+        snapToInterval={550} // Esto fuerza el scroll a detenerse exactamente en cada página
+        snapToAlignment="start" // Alinea perfectamente cada página
+        // decelerationRate="fast" // Hace el scroll más preciso
       >
         {pages.map((pageUrl, index) => (
-          <View key={`page-${index}`} style={styles.pageContainer}>
+          <View 
+            key={`page-${index}`} 
+            style={[styles.pageContainer, { height }]} // Aseguramos altura exacta
+          >
             <Image
               source={{ uri: pageUrl }}
-              style={styles.pageImage}
+              style={[styles.pageImage, { 
+                width: '100%', 
+                // height: "100%",
+                // aspectRatio:1/2.1 // Ajusta según proporción común de manga
+              }]}
               resizeMode="contain"
               onError={() => console.error('Error loading image:', pageUrl)}
             />
@@ -116,7 +128,7 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
       
       <View style={styles.pageIndicator}>
         <Text style={styles.pageIndicatorText}>
-          Página {currentPage + 1} de {pages.length}
+          {currentPage + 1}/{pages.length}
         </Text>
       </View>
     </View>
@@ -132,15 +144,17 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   pageContainer: {
-    width: Dimensions.get('window').width,
-    height: Dimensions.get('window').height,
+    width: '100%',
+    maxHeight:550,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#000',
+    backgroundColor: '#e3e3e3',
+    paddingVertical:0
   },
   pageImage: {
-    width: '100%',
+    width:"100%",
     height: '100%',
+    marginHorizontal:15
   },
   loadingContainer: {
     flex: 1,
@@ -182,7 +196,7 @@ const styles = StyleSheet.create({
   },
   pageIndicator: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 30,
     alignSelf: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     paddingHorizontal: 15,
