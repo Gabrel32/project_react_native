@@ -1,5 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, ActivityIndicator, Dimensions, Alert } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  Image, 
+  StyleSheet, 
+  ScrollView, 
+  ActivityIndicator, 
+  Alert,
+  NativeSyntheticEvent,
+  NativeScrollEvent
+} from 'react-native';
 import config from '../config';
 
 interface ReaderScreenProps {
@@ -10,19 +20,24 @@ interface ReaderScreenProps {
   };
 }
 
+const PAGE_HEIGHT = 550; 
+
 export default function ReaderScreen({ route }: ReaderScreenProps) {
   const { chapterId } = route.params;
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
-  const { width, height } = Dimensions.get('window');
+  const [loadedPages, setLoadedPages] = useState<boolean[]>([]);
+  const [showSlowLoading, setShowSlowLoading] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     const fetchChapterPages = async () => {
       try {
         setLoading(true);
         setError(null);
+        setShowSlowLoading(false);
         
         const serverResponse = await fetch(`${config.BASE_URL}/at-home/server/${chapterId}`);
         
@@ -42,6 +57,7 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
         );
         
         setPages(pageUrls);
+        setLoadedPages(new Array(pageUrls.length).fill(false));
         
       } catch (err) {
         console.error('Error fetching chapter:', err);
@@ -56,11 +72,48 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
     fetchChapterPages();
   }, [chapterId]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (loading) {
+        setShowSlowLoading(true);
+      }
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [loading]);
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetY = event.nativeEvent.contentOffset.y;
+    const newPage = Math.floor(offsetY / PAGE_HEIGHT + 0.5);
+    
+    const clampedPage = Math.max(0, Math.min(newPage, pages.length - 1));
+    
+    if (currentPage !== clampedPage) {
+      setCurrentPage(clampedPage);
+    }
+  };
+
+  useEffect(() => {
+    if (pages.length > 0 && currentPage >= pages.length) {
+      const correctedPage = pages.length - 1;
+      setCurrentPage(correctedPage);
+      scrollViewRef.current?.scrollTo({
+        y: correctedPage * PAGE_HEIGHT,
+        animated: true
+      });
+    }
+  }, [currentPage, pages.length]);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#0000ff" />
         <Text style={styles.loadingText}>Cargando capítulo...</Text>
+        {showSlowLoading && (
+          <Text style={styles.slowLoadingText}>
+            La carga está tardando más de lo esperado...
+          </Text>
+        )}
       </View>
     );
   }
@@ -86,42 +139,47 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
 
   return (
     <View style={styles.container}>
+      <View style={styles.progressContainer}>
+        <View 
+          style={[
+            styles.progressBar, 
+            { width: `${((currentPage + 1) / pages.length) * 100}%` }
+          ]} 
+        />
+      </View>
+      
       <ScrollView
-        // ref={scrollViewRef}
+        ref={scrollViewRef}
         contentContainerStyle={styles.scrollContainer}
-        pagingEnabled
-        horizontal={false}
         showsVerticalScrollIndicator={false}
-        onScroll={(event) => {
-          const offsetY = event.nativeEvent.contentOffset.y;
-          const pageHeight = height;
-          const newPage = Math.round(offsetY / pageHeight);
-          
-          // Solo actualizar si hay un cambio real de página
-          if (currentPage !== newPage && newPage >= 0 && newPage < pages.length) {
-            setCurrentPage(newPage);
-          }
-        }}
-        scrollEventThrottle={0}
-        snapToInterval={550} // Esto fuerza el scroll a detenerse exactamente en cada página
-        snapToAlignment="start" // Alinea perfectamente cada página
-        // decelerationRate="fast" // Hace el scroll más preciso
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        snapToInterval={PAGE_HEIGHT}
+        snapToAlignment="start"
+        decelerationRate="fast"
       >
         {pages.map((pageUrl, index) => (
           <View 
             key={`page-${index}`} 
-            style={[styles.pageContainer, { height }]} // Aseguramos altura exacta
+            style={[styles.pageContainer, { height: PAGE_HEIGHT }]} 
           >
             <Image
               source={{ uri: pageUrl }}
-              style={[styles.pageImage, { 
-                width: '100%', 
-                // height: "100%",
-                // aspectRatio:1/2.1 // Ajusta según proporción común de manga
-              }]}
+              style={styles.pageImage}
               resizeMode="contain"
               onError={() => console.error('Error loading image:', pageUrl)}
+              onLoad={() => {
+                const newLoaded = [...loadedPages];
+                newLoaded[index] = true;
+                setLoadedPages(newLoaded);
+              }}
             />
+            {!loadedPages[index] && (
+              <View style={styles.pageLoadingOverlay}>
+                <ActivityIndicator size="small" color="#0000ff" />
+                <Text style={styles.pageLoadingText}>Cargando página {index + 1}</Text>
+              </View>
+            )}
           </View>
         ))}
       </ScrollView>
@@ -138,33 +196,41 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: 'transparent',
+    paddingVertical: 30,
   },
   scrollContainer: {
     flexGrow: 1,
   },
   pageContainer: {
     width: '100%',
-    maxHeight:550,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#e3e3e3',
-    paddingVertical:0
+    paddingHorizontal: 2,
+    position: 'relative',
   },
   pageImage: {
-    width:"100%",
+    width: "100%",
     height: '100%',
-    marginHorizontal:15
+    marginHorizontal: 15,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
+    padding: 20,
   },
   loadingText: {
     marginTop: 10,
     color: '#333',
+  },
+  slowLoadingText: {
+    marginTop: 10,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   errorContainer: {
     flex: 1,
@@ -208,4 +274,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  progressContainer: {
+    width: '100%',
+    height: 3,
+    backgroundColor: '#e0e0e0',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    zIndex: 10,
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#0000ff',
+  },
+  pageLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+  },
+  pageLoadingText: {
+    marginTop: 10,
+    color: '#333',
+  },
+nextChapterButton: {
+  position: 'absolute',
+  bottom: 20,
+  right: 20,
+  backgroundColor: '#0000ff',
+  width: 50,
+  height: 50,
+  borderRadius: 25,
+  justifyContent: 'center',
+  alignItems: 'center',
+  elevation: 5,
+},
 });
