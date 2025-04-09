@@ -8,7 +8,8 @@ import {
   ActivityIndicator, 
   Alert,
   NativeSyntheticEvent,
-  NativeScrollEvent
+  NativeScrollEvent,
+  Pressable
 } from 'react-native';
 import config from '../config';
 
@@ -183,11 +184,19 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
           </View>
         ))}
       </ScrollView>
+
+      
       
       <View style={styles.pageIndicator}>
         <Text style={styles.pageIndicatorText}>
           {currentPage + 1}/{pages.length}
         </Text>
+        <View>
+        <Pressable style={styles.nextChapterButton} onPress={()=>{
+          console.log("aqui siguente cap");
+          
+        }}><Text>Siguiente Capitulo</Text></Pressable>
+        </View>
       </View>
     </View>
   );
@@ -262,6 +271,9 @@ const styles = StyleSheet.create({
   },
   pageIndicator: {
     position: 'absolute',
+    justifyContent:"center",
+    alignItems:"center",
+    gap:2,
     bottom: 30,
     alignSelf: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -302,13 +314,12 @@ const styles = StyleSheet.create({
     color: '#333',
   },
 nextChapterButton: {
-  position: 'absolute',
-  bottom: 20,
-  right: 20,
   backgroundColor: '#0000ff',
   width: 50,
   height: 50,
-  borderRadius: 25,
+  paddingHorizontal:4,
+  paddingVertical:6,
+  borderRadius:10,
   justifyContent: 'center',
   alignItems: 'center',
   elevation: 5,
