@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -9,79 +9,100 @@ import {
   Alert,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Pressable
+  Pressable,
+  BackHandler,
+  Dimensions
 } from 'react-native';
 import config from '../config';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 
 interface ReaderScreenProps {
   route: {
     params: {
       chapterId: string;
+      chapter: string;
+      title: string;
+      mangaId: string;
+      nextChapterId?: string;
+      prevChapterId?: string;
     };
   };
 }
 
-const PAGE_HEIGHT = 550; 
+type RootStackParamList = {
+  Reader: {
+    chapterId: string;
+    chapter: string;
+    title: string;
+    mangaId: string;
+    nextChapterId?: string;
+    prevChapterId?: string;
+  };
+};
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const PAGE_HEIGHT = SCREEN_HEIGHT * 0.8; // Ajusta según necesidad
+
+type NavigationProps = StackNavigationProp<RootStackParamList, 'Reader'>;
 
 export default function ReaderScreen({ route }: ReaderScreenProps) {
-  const { chapterId } = route.params;
+  const { 
+    chapterId, 
+    chapter, 
+    title, 
+    mangaId, 
+    nextChapterId,
+    prevChapterId
+  } = route.params;
+  
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [loadedPages, setLoadedPages] = useState<boolean[]>([]);
-  const [showSlowLoading, setShowSlowLoading] = useState(false);
+  const [showControls, setShowControls] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
+  const navigation = useNavigation<NavigationProps>();
 
-  useEffect(() => {
-    const fetchChapterPages = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        setShowSlowLoading(false);
-        
-        const serverResponse = await fetch(`${config.BASE_URL}/at-home/server/${chapterId}`);
-        
-        if (!serverResponse.ok) {
-          throw new Error(`Error al obtener servidor: ${serverResponse.status}`);
-        }
-        
-        const serverData = await serverResponse.json();
-        
-        if (!serverData.baseUrl || !serverData.chapter?.hash || !serverData.chapter?.data) {
-          throw new Error('Datos del servidor incompletos');
-        }
-        
-        const { baseUrl, chapter } = serverData;
-        const pageUrls = chapter.data.map((fileName: string) => 
-          `${baseUrl}/data/${chapter.hash}/${fileName}`
-        );
-        
-        setPages(pageUrls);
-        setLoadedPages(new Array(pageUrls.length).fill(false));
-        
-      } catch (err) {
-        console.error('Error fetching chapter:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
-        setError(errorMessage);
-        Alert.alert('Error', `No se pudo cargar el capítulo: ${errorMessage}`);
-      } finally {
-        setLoading(false);
+  const fetchChapterPages = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const serverResponse = await fetch(`${config.BASE_URL}/at-home/server/${chapterId}`);
+      
+      if (!serverResponse.ok) {
+        throw new Error(`Error al obtener servidor: ${serverResponse.status}`);
       }
-    };
-
-    fetchChapterPages();
+      
+      const serverData = await serverResponse.json();
+      
+      if (!serverData.baseUrl || !serverData.chapter?.hash || !serverData.chapter?.data) {
+        throw new Error('Datos del servidor incompletos');
+      }
+      
+      const { baseUrl, chapter: chapterData } = serverData;
+      const pageUrls = chapterData.data.map((fileName: string) => 
+        `${baseUrl}/data/${chapterData.hash}/${fileName}`
+      );
+      
+      setPages(pageUrls);
+      setLoadedPages(new Array(pageUrls.length).fill(false));
+      
+    } catch (err) {
+      console.error('Error fetching chapter:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+      setError(errorMessage);
+      Alert.alert('Error', `No se pudo cargar el capítulo: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
   }, [chapterId]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (loading) {
-        setShowSlowLoading(true);
-      }
-    }, 5000);
-
-    return () => clearTimeout(timer);
-  }, [loading]);
+    fetchChapterPages();
+  }, [fetchChapterPages]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetY = event.nativeEvent.contentOffset.y;
@@ -92,6 +113,42 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
     if (currentPage !== clampedPage) {
       setCurrentPage(clampedPage);
     }
+  };
+
+  const handleImageLoad = (index: number) => {
+    setLoadedPages(prev => {
+      const newLoaded = [...prev];
+      newLoaded[index] = true;
+      return newLoaded;
+    });
+  };
+
+  const handleNextChapter = () => {
+    if (nextChapterId) {
+      navigation.replace('Reader', {
+        chapterId: nextChapterId,
+        chapter: `${parseInt(chapter) + 1}`,
+        title,
+        mangaId,
+        prevChapterId: chapterId,
+      });
+    }
+  };
+
+  const handlePrevChapter = () => {
+    if (prevChapterId) {
+      navigation.replace('Reader', {
+        chapterId: prevChapterId,
+        chapter: `${parseInt(chapter) - 1}`,
+        title,
+        mangaId,
+        nextChapterId: chapterId,
+      });
+    }
+  };
+
+  const toggleControls = () => {
+    setShowControls(prev => !prev);
   };
 
   useEffect(() => {
@@ -110,11 +167,6 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#0000ff" />
         <Text style={styles.loadingText}>Cargando capítulo...</Text>
-        {showSlowLoading && (
-          <Text style={styles.slowLoadingText}>
-            La carga está tardando más de lo esperado...
-          </Text>
-        )}
       </View>
     );
   }
@@ -126,6 +178,9 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
         <Text style={styles.errorHelpText}>
           Por favor, verifica tu conexión a internet e intenta nuevamente.
         </Text>
+        <Pressable style={styles.retryButton} onPress={fetchChapterPages}>
+          <Text style={styles.retryButtonText}>Reintentar</Text>
+        </Pressable>
       </View>
     );
   }
@@ -134,46 +189,34 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
     return (
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyText}>No se encontraron páginas en este capítulo</Text>
+        <Pressable style={styles.retryButton} onPress={fetchChapterPages}>
+          <Text style={styles.retryButtonText}>Reintentar</Text>
+        </Pressable>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.progressContainer}>
-        <View 
-          style={[
-            styles.progressBar, 
-            { width: `${((currentPage + 1) / pages.length) * 100}%` }
-          ]} 
-        />
-      </View>
-      
       <ScrollView
         ref={scrollViewRef}
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        snapToInterval={PAGE_HEIGHT}
-        snapToAlignment="start"
-        decelerationRate="fast"
+        decelerationRate="normal"
       >
         {pages.map((pageUrl, index) => (
           <View 
             key={`page-${index}`} 
-            style={[styles.pageContainer, { height: PAGE_HEIGHT }]} 
+            style={styles.pageContainer} 
           >
             <Image
               source={{ uri: pageUrl }}
               style={styles.pageImage}
               resizeMode="contain"
               onError={() => console.error('Error loading image:', pageUrl)}
-              onLoad={() => {
-                const newLoaded = [...loadedPages];
-                newLoaded[index] = true;
-                setLoadedPages(newLoaded);
-              }}
+              onLoad={() => handleImageLoad(index)}
             />
             {!loadedPages[index] && (
               <View style={styles.pageLoadingOverlay}>
@@ -185,19 +228,64 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
         ))}
       </ScrollView>
 
-      
-      
-      <View style={styles.pageIndicator}>
-        <Text style={styles.pageIndicatorText}>
-          {currentPage + 1}/{pages.length}
-        </Text>
-        <View>
-        <Pressable style={styles.nextChapterButton} onPress={()=>{
-          console.log("aqui siguente cap");
+      {!showControls && (
+        <Pressable 
+          style={styles.showControlsButton} 
+          onPress={toggleControls}
+        >
+          <Text style={styles.showControlsButtonText}>☰</Text>
+        </Pressable>
+      )}
+
+      {showControls && (
+        <View style={styles.controlsContainer}>
+          <Pressable 
+            style={styles.hideControlsButton} 
+            onPress={toggleControls}
+          >
+            <Text style={styles.hideControlsButtonText}>×</Text>
+          </Pressable>
           
-        }}><Text>Siguiente Capitulo</Text></Pressable>
+          <View style={styles.progressContainer}>
+            <View 
+              style={[
+                styles.progressBar, 
+                { width: `${((currentPage + 1) / pages.length) * 100}%` }
+              ]} 
+            />
+          </View>
+          
+          <View style={styles.navigationControls}>
+            <Pressable 
+              style={[
+                styles.navButton, 
+                !prevChapterId && styles.disabledButton
+              ]} 
+              onPress={handlePrevChapter}
+              disabled={!prevChapterId}
+            >
+              <Text style={styles.navButtonText}>Anterior</Text>
+            </Pressable>
+            
+            <View style={styles.pageIndicator}>
+              <Text style={styles.pageIndicatorText}>
+                {currentPage + 1}/{pages.length}
+              </Text>
+            </View>
+            
+            <Pressable 
+              style={[
+                styles.navButton, 
+                !nextChapterId && styles.disabledButton
+              ]} 
+              onPress={handleNextChapter}
+              disabled={!nextChapterId}
+            >
+              <Text style={styles.navButtonText}>Siguiente</Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
+      )}
     </View>
   );
 }
@@ -205,24 +293,29 @@ export default function ReaderScreen({ route }: ReaderScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'transparent',
-    paddingVertical: 30,
+    backgroundColor: '#e3e3e3',
+    paddingTop: 25,
+    paddingHorizontal: 4,
+    borderRadius: 20
   },
   scrollContainer: {
-    flexGrow: 1,
+    paddingVertical: 5,
   },
   pageContainer: {
     width: '100%',
+    height: PAGE_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 5,
     backgroundColor: '#e3e3e3',
-    paddingHorizontal: 2,
     position: 'relative',
+    borderRadius: 10,
+    overflow: 'hidden',
   },
   pageImage: {
-    width: "100%",
+    width: '100%',
     height: '100%',
-    marginHorizontal: 15,
+    borderRadius: 10,
   },
   loadingContainer: {
     flex: 1,
@@ -235,18 +328,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#333',
   },
-  slowLoadingText: {
-    marginTop: 10,
-    color: '#666',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
     backgroundColor: '#fff',
+    gap: 20,
   },
   errorText: {
     color: 'red',
@@ -264,36 +352,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     backgroundColor: '#fff',
+    gap: 20,
   },
   emptyText: {
     color: '#333',
     fontSize: 16,
   },
-  pageIndicator: {
+  controlsContainer: {
     position: 'absolute',
-    justifyContent:"center",
-    alignItems:"center",
-    gap:2,
-    bottom: 30,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 15,
-  },
-  pageIndicatorText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    bottom: 20,
+    left: 10,
+    right: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingVertical: 10,
+    borderRadius: 10,
+    paddingHorizontal: 10,
   },
   progressContainer: {
     width: '100%',
     height: 3,
-    backgroundColor: '#e0e0e0',
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    zIndex: 10,
+    backgroundColor: '#333',
+    marginBottom: 10,
   },
   progressBar: {
     height: '100%',
@@ -313,15 +392,78 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#333',
   },
-nextChapterButton: {
-  backgroundColor: '#0000ff',
-  width: 50,
-  height: 50,
-  paddingHorizontal:4,
-  paddingVertical:6,
-  borderRadius:10,
-  justifyContent: 'center',
-  alignItems: 'center',
-  elevation: 5,
-},
+  navigationControls: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 5,
+  },
+  navButton: {
+    backgroundColor: '#0000ff',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 5,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  disabledButton: {
+    backgroundColor: '#666',
+    opacity: 0.5,
+  },
+  navButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  pageIndicator: {
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 15,
+    paddingVertical: 5,
+    borderRadius: 15,
+  },
+  pageIndicatorText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  retryButton: {
+    backgroundColor: '#0000ff',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 5,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  showControlsButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  showControlsButtonText: {
+    color: 'white',
+    fontSize: 20,
+  },
+  hideControlsButton: {
+    position: 'absolute',
+    top: -10,
+    right: -10,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  hideControlsButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
 });
