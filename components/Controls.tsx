@@ -45,11 +45,11 @@ const Controls: React.FC<ControlsProps> = ({
       
       <View style={styles.navigationControls}>
         <Pressable 
-          style={[
+          style={({ pressed }) => [
             styles.navButton, 
-            !prevChapterId && styles.disabledButton
+            (!prevChapterId || pressed) && styles.disabledButton
           ]} 
-          onPress={handlePrevChapter}
+          onPress={prevChapterId ? handlePrevChapter : undefined}
           disabled={!prevChapterId}
         >
           <Text style={styles.navButtonText}>Anterior</Text>
@@ -62,11 +62,11 @@ const Controls: React.FC<ControlsProps> = ({
         </View>
         
         <Pressable 
-          style={[
+          style={({ pressed }) => [
             styles.navButton, 
-            !nextChapterId && styles.disabledButton
+            (!nextChapterId || pressed) && styles.disabledButton
           ]} 
-          onPress={handleNextChapter}
+          onPress={nextChapterId ? handleNextChapter : undefined}
           disabled={!nextChapterId}
         >
           <Text style={styles.navButtonText}>Siguiente</Text>
@@ -79,10 +79,10 @@ const Controls: React.FC<ControlsProps> = ({
 const styles = StyleSheet.create({
   controlsContainer: {
     position: 'absolute',
-    bottom: 20,
-    left: 10,
-    right: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    bottom:10,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     paddingVertical: 10,
     borderRadius: 10,
     paddingHorizontal: 10,

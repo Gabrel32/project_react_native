@@ -32,7 +32,9 @@ const ReaderScreen: React.FC<ReaderScreenProps> = ({ route }) => {
     title, 
     mangaId, 
     nextChapterId,
-    prevChapterId
+    prevChapterId,
+    allChapters,
+    chapterIndex
   } = route.params;
   
   const [pages, setPages] = useState<string[]>([]);
@@ -117,28 +119,68 @@ const ReaderScreen: React.FC<ReaderScreenProps> = ({ route }) => {
   }, []);
 
   const handleNextChapter = useCallback(() => {
-    if (nextChapterId) {
+    if (!allChapters || allChapters.length === 0) {
+      // Fallback al método antiguo si no tenemos todos los capítulos
+      if (nextChapterId) {
+        navigation.replace('Reader', {
+          chapterId: nextChapterId,
+          chapter: `${parseInt(chapter || '0') + 1}`,
+          title,
+          mangaId,
+          prevChapterId: chapterId,
+        });
+      }
+      return;
+    }
+
+    // Método nuevo con toda la información
+    const currentIdx = chapterIndex ?? allChapters.findIndex(c => c.id === chapterId);
+    if (currentIdx < allChapters.length - 1) { // Si hay capítulo siguiente
+      const nextChapter = allChapters[currentIdx + 1];
       navigation.replace('Reader', {
-        chapterId: nextChapterId,
-        chapter: `${parseInt(chapter) + 1}`,
-        title,
+        chapterId: nextChapter.id,
+        chapter: nextChapter.attributes.chapter,
+        title: nextChapter.attributes.title,
         mangaId,
         prevChapterId: chapterId,
+        nextChapterId: currentIdx < allChapters.length - 2 ? allChapters[currentIdx + 2].id : undefined,
+        chapterIndex: currentIdx + 1,
+        allChapters,
       });
     }
-  }, [nextChapterId, navigation, chapter, title, mangaId, chapterId]);
+  }, [allChapters, chapterId, chapter, chapterIndex, mangaId, navigation, nextChapterId, title]);
 
   const handlePrevChapter = useCallback(() => {
-    if (prevChapterId) {
+    if (!allChapters || allChapters.length === 0) {
+      // Fallback al método antiguo si no tenemos todos los capítulos
+      if (prevChapterId) {
+        navigation.replace('Reader', {
+          chapterId: prevChapterId,
+          chapter: `${parseInt(chapter || '0') - 1}`,
+          title,
+          mangaId,
+          nextChapterId: chapterId,
+        });
+      }
+      return;
+    }
+
+    // Método nuevo con toda la información
+    const currentIdx = chapterIndex ?? allChapters.findIndex(c => c.id === chapterId);
+    if (currentIdx > 0) { // Si hay capítulo anterior
+      const prevChapter = allChapters[currentIdx - 1];
       navigation.replace('Reader', {
-        chapterId: prevChapterId,
-        chapter: `${parseInt(chapter) - 1}`,
-        title,
+        chapterId: prevChapter.id,
+        chapter: prevChapter.attributes.chapter,
+        title: prevChapter.attributes.title,
         mangaId,
         nextChapterId: chapterId,
+        prevChapterId: currentIdx > 1 ? allChapters[currentIdx - 2].id : undefined,
+        chapterIndex: currentIdx - 1,
+        allChapters,
       });
     }
-  }, [prevChapterId, navigation, chapter, title, mangaId, chapterId]);
+  }, [allChapters, chapterId, chapter, chapterIndex, mangaId, navigation, prevChapterId, title]);
 
   const toggleControls = useCallback(() => {
     setShowControls(prev => !prev);
@@ -190,11 +232,10 @@ const ReaderScreen: React.FC<ReaderScreenProps> = ({ route }) => {
         onScroll={handleScroll}
         scrollEventThrottle={16}
         decelerationRate="fast"
-        snapToInterval={PAGE_HEIGHT-100}
         snapToAlignment="start"
       >
         {pages.map((pageUrl, index) => (
-          <View key={`page-container-${index}`} style={{ height: PAGE_HEIGHT }}>
+          <View key={`page-container-${index}`} style={{ height: PAGE_HEIGHT-90 }}>
             <PageImage 
               uri={pageUrl} 
               index={index}

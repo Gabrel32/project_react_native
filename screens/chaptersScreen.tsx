@@ -11,31 +11,9 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import config from '../config';
+import { Chapter, RootStackParamList } from '../types';
 
-// Definición de tipos para los capítulos
-interface Chapter {
-  id: string;
-  attributes: {
-    chapter: string;
-    title?: string;
-    translatedLanguage: string;
-    publishAt?: string;
-  };
-}
 
-// Tipos para los parámetros de navegación
-type RootStackParamList = {
-  Reader: {
-    chapterId: string;
-    chapter?: string;
-    title?: string;
-    nextChapterId?: string;
-    prevChapterId?:string
-    mangaId: string;
-    chapterIndex?: number;
-  };
-  Chapters: { mangaId: string };
-};
 
 type ChaptersScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Chapters'>;
 
@@ -142,16 +120,16 @@ export default function ChaptersScreen({ route }: ChaptersScreenProps) {
         data={chapters}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => {
-          const nextChapter = index < chapters.length - 1 ? chapters[index + 1] : null;
+          const nextChapter = index > 0 ? chapters[index - 1] : null;
+          const prevChapter = index < chapters.length - 1 ? chapters[index + 1] : null;
 
           return (
+
             <TouchableOpacity
               style={styles.chapterItem}
               onPress={() => {
-
-                const nextChapter = index > 0 ? chapters[index - 1] : null;
-                const prevChapter = index < chapters.length - 1 ? chapters[index + 1] : null;
-  
+                console.log(chapters);
+                
                 navigation.navigate('Reader', {
                   chapterId: item.id,
                   chapter: item.attributes.chapter,
@@ -159,9 +137,10 @@ export default function ChaptersScreen({ route }: ChaptersScreenProps) {
                   nextChapterId: nextChapter?.id,
                   prevChapterId: prevChapter?.id,
                   mangaId: mangaId,
-                  chapterIndex: index
-                })}
-              }  
+                  chapterIndex: index,
+                  allChapters: chapters // Pasamos todos los capítulos
+                });
+              }}
             >
               <View style={styles.chapterInfo}>
                 <Text style={styles.chapterText}>

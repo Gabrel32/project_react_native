@@ -64,6 +64,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'transparent',
+    borderRadius:"2%",
     overflow: 'hidden',
   },
   pageImage: {
