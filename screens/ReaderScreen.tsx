@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { 
   View, 
   ScrollView, 
@@ -6,7 +6,9 @@ import {
   Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  BackHandler
+  BackHandler,
+  FlatList,
+  ActivityIndicator
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -17,11 +19,10 @@ import LoadingState from '../components/LoadingStade';
 import ErrorState from '../components/ErrorStade';
 import EmptyState from '../components/EmptyStade';
 import { RootStackParamList, ReaderScreenProps } from '../types';
+import { fetchChapterPages as fetchChapterPagesApi  } from '../api/mangadex';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PAGE_HEIGHT = (SCREEN_HEIGHT * 0.8);
-
-const VISIBLE_PAGES_AROUND = 3;
 
 type NavigationProps = StackNavigationProp<RootStackParamList, 'Reader'>;
 
@@ -41,65 +42,70 @@ const ReaderScreen: React.FC<ReaderScreenProps> = ({ route }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
-  const [loadedPages, setLoadedPages] = useState<boolean[]>([]);
   const [showControls, setShowControls] = useState(true);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const [loadedPages, setLoadedPages] = useState<Set<number>>(new Set());
+  const flatListRef = useRef<FlatList>(null);
   const navigation = useNavigation<NavigationProps>();
+  
 
-  const fetchChapterPages = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const serverResponse = await fetch(`${config.BASE_URL}/at-home/server/${chapterId}`);
-      
-      if (!serverResponse.ok) {
-        throw new Error(`Error al obtener servidor: ${serverResponse.status}`);
-      }
-      
-      const serverData = await serverResponse.json();
-      
-      if (!serverData.baseUrl || !serverData.chapter?.hash || !serverData.chapter?.data) {
-        throw new Error('Datos del servidor incompletos');
-      }
-      
-      const { baseUrl, chapter: chapterData } = serverData;
-      const pageUrls = chapterData.data.map((fileName: string) => 
-        `${baseUrl}/data/${chapterData.hash}/${fileName}`
-      );
-      
-      setPages(pageUrls);
-      setLoadedPages(new Array(pageUrls.length).fill(false));
-      
-    } catch (err) {
-      console.error('Error fetching chapter:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [chapterId]);
+  const memoizedPages = useMemo(() => pages, [pages]);
+
+// Dentro de tu componente, reemplaza la función existente con:
+const fetchChapterPages = useCallback(async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    setLoadedPages(new Set());
+    
+    const pageUrls = await fetchChapterPagesApi(chapterId);
+    setPages(pageUrls);
+    
+  } catch (err) {
+    console.error('Error fetching chapter:', err);
+    const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+    setError(errorMessage);
+  } finally {
+    setLoading(false);
+  }
+}, [chapterId]);
 
   useEffect(() => {
     fetchChapterPages();
   }, [fetchChapterPages]);
 
-  const loadPages = useCallback(() => {
+  useEffect(() => {
+    if (pages.length === 0) return;
+  
     setLoadedPages(prev => {
-      const newLoaded = [...prev];
-      const start = Math.max(0, currentPage - VISIBLE_PAGES_AROUND);
-      const end = Math.min(pages.length - 1, currentPage + VISIBLE_PAGES_AROUND);
+      const newLoaded = new Set(prev);
+      
+      // Siempre cargar la página actual
+      newLoaded.add(currentPage);
+      
+      // Cargar páginas alrededor con un buffer más generoso
+      const BUFFER_AROUND = 3; // Aumentamos el buffer
+      const start = Math.max(0, currentPage - BUFFER_AROUND);
+      const end = Math.min(pages.length - 1, currentPage + BUFFER_AROUND);
       
       for (let i = start; i <= end; i++) {
-        newLoaded[i] = true;
+        newLoaded.add(i);
       }
+      
+      // Mantener algunas páginas adicionales para scroll rápido
+      if (newLoaded.size > BUFFER_AROUND * 2 + 1) {
+        // Eliminar las más lejanas manteniendo un buffer mínimo
+        const sorted = Array.from(newLoaded).sort((a, b) => 
+          Math.abs(a - currentPage) - Math.abs(b - currentPage)
+        );
+        
+        // Mantener más páginas en memoria
+        const toKeep = Math.min(sorted.length, BUFFER_AROUND * 2 + 3);
+        sorted.slice(toKeep).forEach(page => newLoaded.delete(page));
+      }
+      
       return newLoaded;
     });
   }, [currentPage, pages.length]);
-
-  useEffect(() => {
-    loadPages();
-  }, [currentPage, loadPages]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetY = event.nativeEvent.contentOffset.y;
@@ -112,15 +118,14 @@ const ReaderScreen: React.FC<ReaderScreenProps> = ({ route }) => {
 
   const handleImageLoad = useCallback((index: number) => {
     setLoadedPages(prev => {
-      const newLoaded = [...prev];
-      newLoaded[index] = true;
+      const newLoaded = new Set(prev);
+      newLoaded.add(index);
       return newLoaded;
     });
   }, []);
 
   const handleNextChapter = useCallback(() => {
     if (!allChapters || allChapters.length === 0) {
-      // Fallback al método antiguo si no tenemos todos los capítulos
       if (nextChapterId) {
         navigation.replace('Reader', {
           chapterId: nextChapterId,
@@ -133,9 +138,8 @@ const ReaderScreen: React.FC<ReaderScreenProps> = ({ route }) => {
       return;
     }
 
-    // Método nuevo con toda la información
     const currentIdx = chapterIndex ?? allChapters.findIndex(c => c.id === chapterId);
-    if (currentIdx < allChapters.length - 1) { // Si hay capítulo siguiente
+    if (currentIdx < allChapters.length - 1) {
       const nextChapter = allChapters[currentIdx + 1];
       navigation.replace('Reader', {
         chapterId: nextChapter.id,
@@ -152,7 +156,6 @@ const ReaderScreen: React.FC<ReaderScreenProps> = ({ route }) => {
 
   const handlePrevChapter = useCallback(() => {
     if (!allChapters || allChapters.length === 0) {
-      // Fallback al método antiguo si no tenemos todos los capítulos
       if (prevChapterId) {
         navigation.replace('Reader', {
           chapterId: prevChapterId,
@@ -165,9 +168,8 @@ const ReaderScreen: React.FC<ReaderScreenProps> = ({ route }) => {
       return;
     }
 
-    // Método nuevo con toda la información
     const currentIdx = chapterIndex ?? allChapters.findIndex(c => c.id === chapterId);
-    if (currentIdx > 0) { // Si hay capítulo anterior
+    if (currentIdx > 0) {
       const prevChapter = allChapters[currentIdx - 1];
       navigation.replace('Reader', {
         chapterId: prevChapter.id,
@@ -186,16 +188,31 @@ const ReaderScreen: React.FC<ReaderScreenProps> = ({ route }) => {
     setShowControls(prev => !prev);
   }, []);
 
-  useEffect(() => {
-    if (pages.length > 0 && currentPage >= pages.length) {
-      const correctedPage = pages.length - 1;
-      setCurrentPage(correctedPage);
-      scrollViewRef.current?.scrollTo({
-        y: correctedPage * PAGE_HEIGHT,
-        animated: true
-      });
-    }
-  }, [currentPage, pages.length]);
+  const renderItem = useCallback(({ item, index }: { item: string; index: number }) => {
+    const isNearby = Math.abs(index - currentPage) <= 2;
+    const shouldRender = loadedPages.has(index) || isNearby;
+    
+    return (
+      <View style={{ height: PAGE_HEIGHT-90 }}>
+        <PageImage 
+          uri={item} 
+          index={index}
+          onLoad={() => handleImageLoad(index)}
+          isVisible={isNearby}
+          PAGE_HEIGHT={PAGE_HEIGHT}
+          priority={index === currentPage ? 'high' : isNearby ? 'medium' : 'low'}
+        />
+      </View>
+    );
+  }, [loadedPages, currentPage, handleImageLoad]);
+
+  const keyExtractor = useCallback((item: string, index: number) => `${index}-${item}`, []);
+
+  const getItemLayout = useCallback((data: any, index: number) => ({
+    length: PAGE_HEIGHT,
+    offset: (PAGE_HEIGHT) * index,
+    index,
+  }), []);
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener(
@@ -225,27 +242,22 @@ const ReaderScreen: React.FC<ReaderScreenProps> = ({ route }) => {
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        ref={scrollViewRef}
-        contentContainerStyle={styles.scrollContainer}
-        showsVerticalScrollIndicator={false}
+      <FlatList
+        ref={flatListRef}
+        data={memoizedPages}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        getItemLayout={getItemLayout}
+        initialScrollIndex={currentPage}
         onScroll={handleScroll}
-        scrollEventThrottle={16}
+        scrollEventThrottle={32}
         decelerationRate="fast"
         snapToAlignment="start"
-      >
-        {pages.map((pageUrl, index) => (
-          <View key={`page-container-${index}`} style={{ height: PAGE_HEIGHT-90 }}>
-            <PageImage 
-              uri={pageUrl} 
-              index={index}
-              onLoad={handleImageLoad}
-              isVisible={loadedPages[index] || false}
-              PAGE_HEIGHT={PAGE_HEIGHT}
-            />
-          </View>
-        ))}
-      </ScrollView>
+        windowSize={5}
+        maxToRenderPerBatch={3}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={true}
+      />
 
       <Controls
         showControls={showControls}
@@ -265,9 +277,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#e3e3e3',
+    paddingTop:25,
   },
-  scrollContainer: {
-    paddingVertical: 0,
+  placeholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
   },
 });
 

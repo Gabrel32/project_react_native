@@ -10,8 +10,8 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import config from '../config';
 import { Chapter, RootStackParamList } from '../types';
+import { getMangaChapters } from '../api/mangadex';
 
 
 
@@ -33,39 +33,35 @@ export default function ChaptersScreen({ route }: ChaptersScreenProps) {
   const [hasMore, setHasMore] = useState(true);
   const navigation = useNavigation<ChaptersScreenNavigationProp>();
   const { mangaId } = route.params;
+  
+  console.log(mangaId);
+  
 
   const fetchChapters = useCallback(async (isRefreshing = false) => {
     try {
       setLoading(isRefreshing ? 'refreshing' : true);
-      setError(null);
-
-      const response = await fetch(
-        `${config.BASE_URL}/manga/${mangaId}/feed?` +
-        `translatedLanguage[]=es&order[chapter]=asc&limit=20&offset=${(page - 1) * 20}`
+      
+      const { data: chapters } = await getMangaChapters(mangaId, {
+        page,
+        languages: ['es'], // Puedes pedir múltiples idiomas
+        order: 'desc', // Cambiar orden si necesitas
+        includes: ['scanlation_group', 'user']
+      });
+  
+      setChapters(prev => 
+        isRefreshing 
+          ? chapters 
+          : [...prev, ...chapters.filter(c => !prev.some(p => p.id === c.id))]
       );
-
-      if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const newChapters = data.data;
-
-      if (isRefreshing) {
-        setChapters(newChapters);
-      } else {
-        setChapters(prev => [...prev, ...newChapters]);
-      }
-
-      setHasMore(newChapters.length === 20);
+      
+      setHasMore(chapters.length >= 20);
+      
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error desconocido');
-      console.error('Error fetching chapters:', err);
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
   }, [mangaId, page]);
-
   useEffect(() => {
     fetchChapters();
   }, [fetchChapters]);
@@ -99,7 +95,7 @@ export default function ChaptersScreen({ route }: ChaptersScreenProps) {
     );
   }
 
-  if (error && chapters.length === 0) {
+  if (error) {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>{error}</Text>
@@ -120,6 +116,7 @@ export default function ChaptersScreen({ route }: ChaptersScreenProps) {
         data={chapters}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => {
+          
           const nextChapter = index > 0 ? chapters[index - 1] : null;
           const prevChapter = index < chapters.length - 1 ? chapters[index + 1] : null;
 
@@ -128,7 +125,7 @@ export default function ChaptersScreen({ route }: ChaptersScreenProps) {
             <TouchableOpacity
               style={styles.chapterItem}
               onPress={() => {
-                console.log(chapters);
+                
                 
                 navigation.navigate('Reader', {
                   chapterId: item.id,

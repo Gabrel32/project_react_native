@@ -16,13 +16,21 @@
       "supportsTablet": true
     },
     "android": {
+      "usesCleartextTraffic": true,
+      "permissions": ["INTERNET"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.gabrel32.react_native_project"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "6b1a7737-a47c-4522-ba6c-c5b7ed749293"
+      }
     }
   }
 }

@@ -3,13 +3,10 @@ import { StyleSheet, Text, View, TouchableOpacity, Animated, Easing, FlatList, A
 import { useEffect, useRef, useState } from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
-import { getMangas, getTopSeinenMangas } from './api/mangadex';
-// import MangaReader from './components/MangaReader';
+import { getTopSeinenMangas } from './api/mangadex';
 import ChaptersScreen from "./screens/chaptersScreen";
 import ReaderScreen from './screens/ReaderScreen';
 
-
-// Definición de tipos para la navegación
 type RootStackParamList = {
   Home: undefined;
   Chapters: { mangaId: string };
@@ -22,7 +19,6 @@ declare global {
   }
 }
 
-// Tipos para los mangas
 interface Manga {
   id: string;
   title: string;
@@ -34,20 +30,17 @@ interface Manga {
 const Stack = createStackNavigator<RootStackParamList>();
 
 function HomeScreen() {
-  // Animaciones
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(100)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
   
-  // Estado para los mangas
   const [mangas, setMangas] = useState<Manga[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const navigation = useNavigation();
 
   useEffect(() => {
-    // Animación de entrada
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -67,7 +60,6 @@ function HomeScreen() {
       })
     ]).start();
 
-    // Cargar mangas
     fetchPopularMangas();
   }, []);
 
@@ -76,10 +68,8 @@ function HomeScreen() {
       setLoading(true);
       setError(null);
       
-      // Usamos la función getTopSeinenMangas que creamos
       const popularMangas = await getTopSeinenMangas();
       
-      // Mapeamos a nuestro formato local
       const processedMangas = popularMangas.map(manga => ({
         id: manga.id,
         title: manga.title,
@@ -110,7 +100,6 @@ function HomeScreen() {
         useNativeDriver: true,
       })
     ]).start(() => {
-      alert("¡Recargando mangas!");
       fetchPopularMangas();
     });
   };
@@ -125,72 +114,84 @@ function HomeScreen() {
   };
 
   const renderMangaItem = ({ item }: { item: Manga }) => (
-    <TouchableOpacity onPress={() => handleMangaPress(item.id)}>
-      <View style={styles.mangaItem}>
-        {item.coverUrl ? (
-          <Image 
-            source={{ uri: item.coverUrl }} 
-            style={styles.mangaImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={[styles.mangaImage, styles.placeholderImage]}>
-            <Text>No image</Text>
-          </View>
-        )}
-        <View style={styles.mangaInfo}>
-          <Text style={styles.mangaTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.mangaAuthor} numberOfLines={1}>{item.author}</Text>
-          <Text style={styles.mangaDescription} numberOfLines={3}>
-            {item.description || 'Descripción no disponible'}
-          </Text>
+    <TouchableOpacity 
+      onPress={() => handleMangaPress(item.id)}
+      activeOpacity={0.7}
+      style={styles.mangaCard}
+    >
+      {item.coverUrl ? (
+        <Image 
+          source={{ uri: item.coverUrl }} 
+          style={styles.mangaCardImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[styles.mangaCardImage, styles.placeholderImage]}>
+          <Text style={styles.placeholderText}>No image</Text>
         </View>
+      )}
+      
+      <View style={styles.mangaCardContent}>
+        <Text style={styles.mangaCardTitle} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.mangaCardAuthor} numberOfLines={1}>{item.author}</Text>
+        <Text style={styles.mangaCardDescription} numberOfLines={2}>
+          {item.description || 'Descripción no disponible'}
+        </Text>
       </View>
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <Animated.View 
-        style={[
-          styles.card,
-          {
-            opacity: fadeAnim,
-            transform: [
-              { translateY: slideAnim },
-              { scale: scaleAnim }
-            ]
-          }
-        ]}
-      >
-        <Text style={styles.title}>MangaDex Explorer</Text>
-        <Text style={styles.subtitle}>Top 10 Seinen más populares</Text>
+      <Animated.View style={[styles.animatedContainer, {
+        opacity: fadeAnim,
+        transform: [
+          { translateY: slideAnim },
+          { scale: scaleAnim }
+        ]
+      }]}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Guts Explorer</Text>
+          <Text style={styles.subtitle}>top seines de todos los tiempos</Text>
+        </View>
         
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#4d6bfe" />
+            <ActivityIndicator size="large" color="#6C5CE7" />
           </View>
         ) : error ? (
-          <Text style={styles.errorText}>Error: {error}</Text>
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity 
+              style={styles.retryButton}
+              onPress={fetchPopularMangas}
+            >
+              <Text style={styles.retryButtonText}>Reintentar</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <FlatList
             data={mangas}
             renderItem={renderMangaItem}
             keyExtractor={item => item.id}
+            numColumns={3}
+            columnWrapperStyle={styles.columnWrapper}
             contentContainerStyle={styles.listContainer}
             showsVerticalScrollIndicator={false}
+            ListFooterComponent={
+              <Animated.View style={{ transform: [{ rotate: rotateInterpolate }] }}>
+                <TouchableOpacity
+                  style={styles.refreshButton}
+                  onPress={startButtonAnimation}
+                >
+                  <Text style={styles.refreshButtonText}>
+                    {loading ? 'Cargando...' : 'Ver más'}
+                  </Text>
+                </TouchableOpacity>
+              </Animated.View>
+            }
           />
         )}
-        
-        <Animated.View style={{ transform: [{ rotate: rotateInterpolate }] }}>
-          <TouchableOpacity  
-            style={styles.button}
-            activeOpacity={0.7}
-            onPress={startButtonAnimation}
-          >
-            <Text style={styles.buttonText}>{loading ? 'Cargando...' : 'Recargar'}</Text>
-          </TouchableOpacity>
-        </Animated.View>
         
         <StatusBar style="auto" />
       </Animated.View>
@@ -205,13 +206,10 @@ export default function App() {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Chapters" component={ChaptersScreen} />
         <Stack.Screen 
-        name="Reader" 
-        component={ReaderScreen}
-        options={{
-          headerShown: false, // Ocultar barra superior para mejor visualización
-        }}
+          name="Reader" 
+          component={ReaderScreen}
+          options={{ headerShown: false }}
         />
-        {/* <Stack.Screen name="Reader" component={MangaReader} /> */}
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -220,119 +218,118 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#a3f58f',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
+    backgroundColor: '#F9F9F9',
+    padding: 16,
+    paddingTop:25,
   },
-  card: {
-    gap: 20,
-    backgroundColor: 'white',
-    borderRadius: 24,
-    padding: 32,
-    width: '100%',
-    maxWidth: 320,
-    shadowColor: '#4d6bfe',
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    borderColor: "#4d6bfe",
-    borderLeftWidth: 2,
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
-    maxHeight: '80%',
+  animatedContainer: {
+    flex: 1,
+  },
+  header: {
+    marginBottom: 24,
+    alignItems: 'center',
   },
   title: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#1a237e',
-    marginBottom: 8,
-    textAlign: 'center',
-    textShadowColor: 'rgba(77, 107, 254, 0.3)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+    color: '#2D3436',
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 16,
-    color: '#4d6bfe',
-    marginBottom: 24,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  button: {
-    backgroundColor: '#4d6bfe',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#4d6bfe',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
-    marginTop: 16,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
+    color: '#6C5CE7',
     fontWeight: '600',
-    letterSpacing: 0.5,
   },
   listContainer: {
-    paddingBottom: 16,
+    paddingBottom: 24,
   },
-  mangaItem: {
-    flexDirection: 'row',
+  columnWrapper: {
+    justifyContent: 'space-between',
     marginBottom: 16,
-    backgroundColor: '#f5f7ff',
+  },
+  mangaCard: {
+    width: '30%',
+    backgroundColor: 'white',
     borderRadius: 12,
     overflow: 'hidden',
-    height: 120,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    marginBottom: 16,
   },
-  mangaImage: {
-    width: 80,
-    height: '100%',
+  mangaCardImage: {
+    width: '100%',
+    height: 150,
+    backgroundColor: '#F1F2F6',
   },
-  placeholderImage: {
-    backgroundColor: '#e0e0e0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mangaInfo: {
-    flex: 1,
+  mangaCardContent: {
     padding: 12,
   },
-  mangaTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1a237e',
+  mangaCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#2D3436',
     marginBottom: 4,
   },
-  mangaAuthor: {
+  mangaCardAuthor: {
     fontSize: 12,
-    color: '#4d6bfe',
-    marginBottom: 4,
-    fontStyle: 'italic',
+    color: '#636E72',
+    marginBottom: 6,
   },
-  mangaDescription: {
+  mangaCardDescription: {
+    fontSize: 11,
+    color: '#7F8C8D',
+    lineHeight: 14,
+  },
+  placeholderImage: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#DFE6E9',
+  },
+  placeholderText: {
+    color: '#636E72',
     fontSize: 12,
-    color: '#666',
+  },
+  refreshButton: {
+    backgroundColor: '#6C5CE7',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+    elevation: 3,
+  },
+  refreshButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 15,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    minHeight: 200,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   errorText: {
-    color: 'red',
+    color: '#D63031',
+    fontSize: 16,
+    marginBottom: 16,
     textAlign: 'center',
-    marginVertical: 20,
+  },
+  retryButton: {
+    backgroundColor: '#D63031',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 6,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontWeight: '600',
   },
 });
