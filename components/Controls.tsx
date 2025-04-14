@@ -35,12 +35,7 @@ const Controls: React.FC<ControlsProps> = ({
       </Pressable>
       
       <View style={styles.progressContainer}>
-        <View 
-          style={[
-            styles.progressBar, 
-            { width: progressWidth }
-          ]} 
-        />
+        <View style={[styles.progressBar, { width: progressWidth }]} />
       </View>
       
       <View style={styles.navigationControls}>
@@ -75,6 +70,7 @@ const Controls: React.FC<ControlsProps> = ({
     </View>
   );
 };
+
 
 const styles = StyleSheet.create({
   controlsContainer: {

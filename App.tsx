@@ -3,7 +3,8 @@ import { StyleSheet, Text, View, TouchableOpacity, Animated, Easing, FlatList, A
 import { useEffect, useRef, useState } from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
-import { getTopSeinenMangas } from './api/mangadex';
+import { getTopSeinenMangas, getMangasWithStats } from './api/mangadex';
+import SearchBar from './components/SearchBar';
 import ChaptersScreen from "./screens/chaptersScreen";
 import ReaderScreen from './screens/ReaderScreen';
 
@@ -15,7 +16,7 @@ type RootStackParamList = {
 
 declare global {
   namespace ReactNavigation {
-    interface RootParamList extends RootStackParamList {}
+    interface RootParamList extends RootStackParamList { }
   }
 }
 
@@ -34,10 +35,12 @@ function HomeScreen() {
   const slideAnim = useRef(new Animated.Value(100)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
-  
+
   const [mangas, setMangas] = useState<Manga[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const navigation = useNavigation();
 
   useEffect(() => {
@@ -67,9 +70,9 @@ function HomeScreen() {
     try {
       setLoading(true);
       setError(null);
-      
+      setSearchQuery('');
+
       const popularMangas = await getTopSeinenMangas();
-      
       const processedMangas = popularMangas.map(manga => ({
         id: manga.id,
         title: manga.title,
@@ -77,14 +80,74 @@ function HomeScreen() {
         coverUrl: manga.coverUrl,
         author: manga.author
       }));
-      
+
       setMangas(processedMangas);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      console.error('Error fetching mangas:', err);
+      setError(err instanceof Error ? err.message : 'Error al cargar mangas');
     } finally {
       setLoading(false);
     }
+  };
+
+  const fuzzySearchMangas = async (query: string) => {
+    try {
+      // Primero intenta búsqueda exacta
+      const exactResults = await getMangasWithStats({
+        title: query,
+        limit: 36,
+        demographic: 'seinen',
+      });
+  
+      if (exactResults.length > 0) {
+        return exactResults;
+      }
+  
+      // Si no hay resultados exactos, haz búsqueda flexible
+      const allSeinen = await getMangasWithStats({
+        limit: 100, // Obtener más resultados para filtrar localmente
+        demographic: 'seinen'
+      });
+  
+      // Filtrado local con coincidencias aproximadas
+      return allSeinen.filter(manga => {
+        const mangaTitle = manga.title.toLowerCase();
+        const searchTerms = query.toLowerCase().split(' ');
+  
+        return searchTerms.some(term => 
+          term.length > 2 && mangaTitle.includes(term)
+        );
+      });
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const handleSearch = async (query: string, matchLevel: number = 2) => {
+    if (!query.trim()) {
+      fetchPopularMangas();
+      return;
+    }
+
+    try {
+      setIsSearching(true);
+      setError(null);
+      
+      const searchResults = await getMangasWithStats({
+        title: query,
+        limit: 36,
+        demographic: 'seinen',
+        // titleMatchLevel: matchLevel // Usamos el nivel de coincidencia
+      });
+      
+      setMangas(searchResults);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error en la búsqueda');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+  const handleClearSearch = () => {
+    fetchPopularMangas();
   };
 
   const startButtonAnimation = () => {
@@ -114,14 +177,14 @@ function HomeScreen() {
   };
 
   const renderMangaItem = ({ item }: { item: Manga }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       onPress={() => handleMangaPress(item.id)}
       activeOpacity={0.7}
       style={styles.mangaCard}
     >
       {item.coverUrl ? (
-        <Image 
-          source={{ uri: item.coverUrl }} 
+        <Image
+          source={{ uri: item.coverUrl }}
           style={styles.mangaCardImage}
           resizeMode="cover"
         />
@@ -130,7 +193,7 @@ function HomeScreen() {
           <Text style={styles.placeholderText}>No image</Text>
         </View>
       )}
-      
+
       <View style={styles.mangaCardContent}>
         <Text style={styles.mangaCardTitle} numberOfLines={1}>{item.title}</Text>
         <Text style={styles.mangaCardAuthor} numberOfLines={1}>{item.author}</Text>
@@ -140,6 +203,61 @@ function HomeScreen() {
       </View>
     </TouchableOpacity>
   );
+
+  const renderContent = () => {
+    if (isSearching) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6C5CE7" />
+          <Text style={styles.searchingText}>Buscando mangas...</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={fetchPopularMangas}
+          >
+            <Text style={styles.retryButtonText}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (mangas.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>
+            {searchQuery ? 
+              "No se encontraron mangas con ese nombre" : 
+              "No hay mangas para mostrar"}
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+      data={mangas}
+      renderItem={renderMangaItem}
+      keyExtractor={item => item.id}
+      numColumns={3}
+      columnWrapperStyle={styles.columnWrapper}
+      contentContainerStyle={styles.listContainer}
+      showsVerticalScrollIndicator={false}
+      ListFooterComponent={
+        !searchQuery ? (
+          <Animated.View style={{ transform: [{ rotate: rotateInterpolate }] }}>
+          </Animated.View>
+        ) : null
+      }
+    />
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -152,49 +270,25 @@ function HomeScreen() {
       }]}>
         <View style={styles.header}>
           <Text style={styles.title}>Guts Explorer</Text>
-          <Text style={styles.subtitle}>top seines de todos los tiempos</Text>
+          <Text style={styles.subtitle}>top seinen de todos los tiempos</Text>
         </View>
-        
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#6C5CE7" />
-          </View>
-        ) : error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity 
-              style={styles.retryButton}
-              onPress={fetchPopularMangas}
-            >
-              <Text style={styles.retryButtonText}>Reintentar</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <FlatList
-            data={mangas}
-            renderItem={renderMangaItem}
-            keyExtractor={item => item.id}
-            numColumns={3}
-            columnWrapperStyle={styles.columnWrapper}
-            contentContainerStyle={styles.listContainer}
-            showsVerticalScrollIndicator={false}
-            ListFooterComponent={
-              <Animated.View style={{ transform: [{ rotate: rotateInterpolate }] }}>
-                <TouchableOpacity
-                  style={styles.refreshButton}
-                  onPress={startButtonAnimation}
-                >
-                  <Text style={styles.refreshButtonText}>
-                    {loading ? 'Cargando...' : 'Ver más'}
-                  </Text>
-                </TouchableOpacity>
-              </Animated.View>
-            }
-          />
-        )}
-        
+
+      <SearchBar
+        onSearch={handleSearch}
+        onClear={() => {
+          setSearchQuery('');
+          fetchPopularMangas();
+        }}
+        placeholder="Buscar mangas seinen..."
+      />
+
+        {renderContent()}
+
         <StatusBar style="auto" />
       </Animated.View>
+      <View style={styles.footer}>
+        <Text style={styles.textFooter}>© 2025 Gabriel Hernandez. Todos los derechos reservados.</Text>
+      </View>
     </View>
   );
 }
@@ -205,8 +299,8 @@ export default function App() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Chapters" component={ChaptersScreen} />
-        <Stack.Screen 
-          name="Reader" 
+        <Stack.Screen
+          name="Reader"
           component={ReaderScreen}
           options={{ headerShown: false }}
         />
@@ -220,7 +314,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9F9F9',
     padding: 16,
-    paddingTop:25,
+    paddingTop: 25,
+    paddingBottom:0
   },
   animatedContainer: {
     flex: 1,
@@ -310,6 +405,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  searchingText: {
+    marginTop: 10,
+    color: '#6C5CE7',
+  },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -332,4 +431,31 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyText: {
+    color: '#636E72',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  footer: {
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 8,
+    paddingBottom:5,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.1)", 
+    shadowColor: "#000",     
+    shadowOffset: { width: 0, height: -1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+},
+  textFooter:{
+    fontWeight:"bold",
+    fontSize:15,
+  }
 });

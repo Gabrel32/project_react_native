@@ -43,9 +43,8 @@ export default function ChaptersScreen({ route }: ChaptersScreenProps) {
       
       const { data: chapters } = await getMangaChapters(mangaId, {
         page,
-        languages: ['es'], // Puedes pedir múltiples idiomas
-        order: 'desc', // Cambiar orden si necesitas
-        includes: ['scanlation_group', 'user']
+        languages: ["es"], // Puedes pedir múltiples idiomas
+        order: 'asc', // Cambiar orden si necesitas
       });
   
       setChapters(prev => 
@@ -95,7 +94,7 @@ export default function ChaptersScreen({ route }: ChaptersScreenProps) {
     );
   }
 
-  if (error) {
+  if (error && chapters.length === 0) {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>{error}</Text>
@@ -117,8 +116,8 @@ export default function ChaptersScreen({ route }: ChaptersScreenProps) {
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => {
           
-          const nextChapter = index > 0 ? chapters[index - 1] : null;
-          const prevChapter = index < chapters.length - 1 ? chapters[index + 1] : null;
+          const nextChapter = chapters[index + 1]||null;
+          const prevChapter = chapters[index - 1]||null;
 
           return (
 

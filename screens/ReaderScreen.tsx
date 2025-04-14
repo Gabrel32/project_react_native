@@ -24,6 +24,9 @@ import { fetchChapterPages as fetchChapterPagesApi  } from '../api/mangadex';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PAGE_HEIGHT = (SCREEN_HEIGHT * 0.8);
 
+const VISIBLE_PAGES_AROUND = 1;
+const BUFFER_SIZE = 5;
+
 type NavigationProps = StackNavigationProp<RootStackParamList, 'Reader'>;
 
 const ReaderScreen: React.FC<ReaderScreenProps> = ({ route }) => {
@@ -200,7 +203,7 @@ const fetchChapterPages = useCallback(async () => {
           onLoad={() => handleImageLoad(index)}
           isVisible={isNearby}
           PAGE_HEIGHT={PAGE_HEIGHT}
-          priority={index === currentPage ? 'high' : isNearby ? 'medium' : 'low'}
+          priority={index === currentPage ? 'high' : isNearby ? 'high' : 'low'}
         />
       </View>
     );

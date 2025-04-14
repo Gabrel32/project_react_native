@@ -1,8 +1,27 @@
 import { DimensionValue } from 'react-native';
 import { RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { TextStyle, TextInputProps, ViewStyle } from 'react-native';
 
-// ... tus otros tipos ...
+// types de searchBar
+export interface SearchBarStyles {
+  container?: ViewStyle;
+  searchContainer?: ViewStyle;
+  input?: TextStyle;
+  icon?: ViewStyle;
+  clearButton?: ViewStyle;
+  searchButton?: ViewStyle;
+  searchButtonText?: TextStyle;
+}
+
+export interface SearchBarProps {
+  onSearch: (text: string) => void;
+  placeholder?: string;
+  inputProps?: TextInputProps;
+  styles?: Partial<SearchBarStyles>;
+}
+
+// types para las listas de app.tsx
 
 export type RootStackParamList = {
   Reader: {
@@ -19,7 +38,7 @@ export type RootStackParamList = {
   Home: undefined; // Añade esto si tienes pantalla Home
 };
 
-// Tipo para las props de ReaderScreen
+// types para las props de ReaderScreen
 export type ReaderScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Reader'>;
 export type ReaderScreenRouteProp = RouteProp<RootStackParamList, 'Reader'>;
 
@@ -28,7 +47,7 @@ export interface ReaderScreenProps {
   navigation: ReaderScreenNavigationProp;
 }
 
-// Definición de tipos para los capítulos
+// Definición de tipos para los capítulos de chaptersScreen
 export interface Chapter {
   id: string;
   attributes: {
@@ -38,28 +57,6 @@ export interface Chapter {
     publishAt?: string;
   };
 }
-
-// Tipos para los parámetros de navegación
-// export type RootStackParamList = {
-//   Reader: {
-//     chapterId: string;
-//     chapter?: string;
-//     title?: string;
-//     nextChapterId?: string;
-//     prevChapterId?: string;
-//     mangaId: string;
-//     chapterIndex?: number;
-//     allChapters?: Chapter[]; 
-//   };
-//   Chapters: { mangaId: string };
-// };
-
-
-// export type ReaderScreenProps = {
-//   route: {
-//     params: RootStackParamList['Reader'];
-//   };
-// };
 
 export type PageImageProps = {
   uri: string;

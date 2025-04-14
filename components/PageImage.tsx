@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Image, StyleSheet } from 'react-native';
+import { ActivityIndicator } from 'react-native';
 import { PageImageProps } from '../types';
 
 const PageImage: React.FC<PageImageProps> = React.memo(({ 
@@ -7,24 +8,22 @@ const PageImage: React.FC<PageImageProps> = React.memo(({
   index,
   onLoad,
   isVisible,
-  PAGE_HEIGHT,
-  priority = 'normal'
+  PAGE_HEIGHT
 }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    return () => {
-      if (!isVisible) {
-        setIsLoading(true);
-        setHasError(false);
-      }
-    };
+    if (!isVisible) {
+      setIsLoading(true);
+      setHasError(false);
+    }
   }, [isVisible]);
 
   if (!isVisible) return null;
 
-  const imageSource = { uri, priority };
+  const imageSource = { uri };
+  
 
   return (
     <View style={styles.pageContainer}>
@@ -38,7 +37,6 @@ const PageImage: React.FC<PageImageProps> = React.memo(({
         source={imageSource}
         style={styles.pageImage}
         resizeMode="contain"
-        fadeDuration={priority === 'high' ? 100 : 300}
         onLoad={() => {
           setIsLoading(false);
           onLoad(index);
@@ -47,6 +45,7 @@ const PageImage: React.FC<PageImageProps> = React.memo(({
           setIsLoading(false);
           setHasError(true);
           console.error('Error loading image:', uri);
+          setTimeout(() => setHasError(false), 5000);
         }}
       />
       {hasError && (
@@ -65,13 +64,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'transparent',
-    borderRadius: 2,
+    borderRadius:"2%",
     overflow: 'hidden',
   },
   pageImage: {
     width: '100%',
     height: '100%',
-    resizeMode: 'contain',
+    resizeMode: 'cover',
   },
   pageLoadingOverlay: {
     position: 'absolute',
@@ -82,7 +81,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    zIndex: 1,
   },
   pageLoadingText: {
     marginTop: 10,
@@ -97,7 +95,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 0, 0, 0.3)',
-    zIndex: 1,
   },
   errorText: {
     color: 'white',
@@ -106,3 +103,5 @@ const styles = StyleSheet.create({
 });
 
 export default PageImage;
+
+

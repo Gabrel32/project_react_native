@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+  <!-- Configuración base que permite tráfico no encriptado y acepta certificados del sistema y usuario -->
+  <base-config cleartextTrafficPermitted="true">
+    <trust-anchors>
+      <certificates src="system" />
+      <certificates src="user" />
+    </trust-anchors>
+  </base-config>
+  
+  <!-- Configuración específica para MangaDex -->
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">api.mangadex.org</domain>
+    <domain includeSubdomains="true">uploads.mangadex.org</domain>
+    <trust-anchors>
+      <certificates src="system" />
+    </trust-anchors>
+  </domain-config>
+</network-security-config>

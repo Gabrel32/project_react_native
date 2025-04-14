@@ -64,27 +64,130 @@ const BASE_URL = config.BASE_URL || "https://api.mangadex.org";
 
 
 
+// export interface ChaptersResponse {
+//   data: Chapter[];
+//   limit: number;
+//   offset: number;
+//   total: number;
+//   response?: Response; // Opcional: para debugging
+// }
+
+// export interface GetMangaChaptersOptions {
+//   page?: number;
+//   limit?: number;
+//   languages?: string[];
+//   order?: 'asc' | 'desc';
+//   includes?: string[];
+//   contentRating?: string[];
+// }
+
+
+
+// interface Chapter {
+//   id: string;
+//   attributes: {
+//     chapter: string;
+//     title: string;
+//     translatedLanguage: string;
+//     publishAt: string;
+//     pages: number;
+//     scanlationGroup?: string;
+//   };
+// }
+
 export interface ChaptersResponse {
   data: Chapter[];
   limit: number;
   offset: number;
   total: number;
-  response?: Response; // Opcional: para debugging
 }
 
-export interface GetMangaChaptersOptions {
+interface GetMangaChaptersOptions {
   page?: number;
   limit?: number;
   languages?: string[];
   order?: 'asc' | 'desc';
-  includes?: string[];
-  contentRating?: string[];
 }
 
+export const getMangaChapters = async (
+  mangaId: string,
+  options: GetMangaChaptersOptions = {}
+): Promise<ChaptersResponse> => {
+  const {
+    page = 1,
+    limit = 100,
+    languages = ['es'],
+    order = 'asc',
+  } = options;
 
+  try {
+    // Construcción de URL más robusta como en getMangasWithStats
+    const url = new URL(`https://api.mangadex.org/manga/${mangaId}/feed`);
+    
+    // Parámetros de consulta
+    url.searchParams.append('limit', '500'); // Pedimos más para filtrar después
+    languages.forEach(lang => url.searchParams.append('translatedLanguage[]', lang));
+    url.searchParams.append('includes[]', 'scanlation_group');
+    
+    // Headers como en la otra función (importante para APK)
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Procesamiento con tipos más seguros
+    const processedChapters: Chapter[] = data.data.map((chapter: any) => {
+      const scanlationGroup = chapter.relationships?.find(
+        (r: any) => r.type === 'scanlation_group'
+      )?.attributes?.name;
+      
+      return {
+        id: chapter.id,
+        attributes: {
+          chapter: chapter.attributes.chapter,
+          title: chapter.attributes.title || '',
+          translatedLanguage: chapter.attributes.translatedLanguage,
+          publishAt: chapter.attributes.publishAt,
+          pages: chapter.attributes.pages || 0,
+          ...(scanlationGroup && { scanlationGroup })
+        }
+      };
+    });
+
+    // Ordenamiento numérico seguro
+    processedChapters.sort((a, b) => {
+      const numA = parseFloat(a.attributes.chapter) || 0;
+      const numB = parseFloat(b.attributes.chapter) || 0;
+      return order === 'asc' ? numA - numB : numB - numA;
+    });
+
+    // Paginación manual (mejorada)
+    const startIndex = (page - 1) * limit;
+    const paginatedChapters = processedChapters.slice(startIndex, startIndex + limit);
+
+    return {
+      data: paginatedChapters,
+      limit,
+      offset: startIndex,
+      total: processedChapters.length
+    };
+
+  } catch (error) {
+    console.error('Error fetching chapters:', error);
+    throw new Error(`Failed to get chapters: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
 export const fetchChapterPages = async (chapterId: string) => {
   try {
-    const serverResponse = await fetch(`${config.BASE_URL}/at-home/server/${chapterId}`);
+    const serverResponse = await fetch(`https://api.mangadex.org/at-home/server/${chapterId}`);
     
     if (!serverResponse.ok) {
       throw new Error(`Error al obtener servidor: ${serverResponse.status}`);
@@ -104,79 +207,6 @@ export const fetchChapterPages = async (chapterId: string) => {
   } catch (err) {
     console.error('Error fetch de capitulo:', err);
     throw err; // Relanzamos el error para manejarlo en el componente
-  }
-};
-/**
- * Obtiene capítulos de manga con tipado fuerte y opciones configurables
- */
-export const getMangaChapters = async (
-  mangaId: string,
-  options: GetMangaChaptersOptions = {}
-): Promise<ChaptersResponse> => {
-  const {
-    page = 1,
-    limit = 100,
-    languages = ['es'],
-    order = 'asc',
-  } = options;
-
-  // Construimos parámetros base manteniendo tu estructura
-  const baseParams = [
-    `limit=${500}`, // Aumentamos el límite para obtener más capítulos
-    ...languages.map(lang => `translatedLanguage[]=${lang}`),
-   
-  ].join('&');
-
-  const url = `${config.BASE_URL}/manga/${mangaId}/feed?${baseParams}`;
-
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/vnd.api+json'
-      }
-    });
-
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-    const data = await response.json();
-
-    // Procesamiento y ordenamiento como en mi versión
-    const processedChapters = data.data.map((chapter: any) => ({
-      id: chapter.id,
-      attributes: {
-        chapter: chapter.attributes.chapter,
-        title: chapter.attributes.title,
-        translatedLanguage: chapter.attributes.translatedLanguage,
-        publishAt: chapter.attributes.publishAt,
-        pages: chapter.attributes.pages,
-        scanlationGroup: chapter.relationships?.find((r: any) => r.type === 'scanlation_group')?.attributes?.name
-      }
-    }));
-
-    // Ordenamos según el parámetro 'order'
-    processedChapters.sort((a: any, b: any) => {
-      const chapterA = parseFloat(a.attributes.chapter);
-      const chapterB = parseFloat(b.attributes.chapter);
-      return order === 'asc' ? chapterA - chapterB : chapterB - chapterA;
-    });
-
-    // Aplicamos paginación manualmente
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + limit;
-    const paginatedChapters = processedChapters.slice(startIndex, endIndex);
-
-    return {
-      data: paginatedChapters,
-      limit: limit,
-      offset: startIndex,
-      total: processedChapters.length
-    };
-
-  } catch (error) {
-    console.error('Error fetching chapters:', error);
-    throw new Error(`Fallo la peticion de capitulos ${error}` );
   }
 };
 /**
@@ -287,7 +317,7 @@ export const getTopSeinenMangas = async (): Promise<Manga[]> => {
       const mustHaveTitles = [
           'Berserk',
           // 'Vinland Saga',
-          'Blame',
+          'BLAME',
           "gantz",
           'Homunculus',
           'Fire Punch',
